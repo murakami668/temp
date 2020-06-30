@@ -1,0 +1,667 @@
+https://docs.oracle.com/cd/F25597_01/document/products/wls/docs92/security/SSL_client.html
+
+Oracle Technology Network
+製品マニュアル ホーム > BEA WebLogic Server 9.2 マニュアル > WebLogic Security プログラマーズ ガイド > Java クライアントでの SSL 認証の使用
+WebLogic Security プログラマーズ ガイド
+     前  次    新しいウィンドウで目次を開く     ここから内容の開始
+Java クライアントでの SSL 認証の使用
+この節では、以下の内容について説明します。
+
+JSSE と WebLogic Server
+JNDI 認証の使い方
+SSL 証明書認証の開発環境
+SSL を使用するアプリケーションの記述
+SSL クライアントのコード例
+これらの節で参照するサンプル コードは、BEA の dev2dev Web サイト、または WebLogic Server 配布キットの次の場所から入手できます。
+
+SAMPLES_HOME\server\examples\src\examples\security\sslclient
+sslclient ディレクトリには、instructions.html ファイル、ant ビルド ファイル、および以下の Java ファイルと JavaServer Page ファイル (.jsp) が含まれています。
+
+MyListener.java
+NulledHostnameVerifier.java
+NulledTrustManager.java
+SSLClient.java
+SSLClientServlet.java
+SSLSocketClient.java
+SnoopServlet.jsp
+以降の説明は、実際のサンプルを見ながら読み進めてください。
+
+ 
+
+JSSE と WebLogic Server
+JSSE (Java Secure Socket Extension) は、SSL と TLS v1 プロトコルをサポートおよび実装し、それらの機能をプログラム的に利用可能にするパッケージのセットです。BEA WebLogic Server は、WebLogic Server クライアントとサーバ、Java クライアント、Web ブラウザ、および他のサーバの間で転送されるデータを暗号化するためにセキュア ソケット レイヤ (SSL) をサポートしています。
+
+WebLogic クライアントでは WebLogic Server による JSSE の実装を使用できますが、これは必須ではありません。他の JSSE の実装も、サーバの外側のクライアントサイドのコードで同じように使用できます。
+
+WebLogic のサーバサイド アプリケーションで SSL を使用する際には、以下の制限が適用されます。
+
+WebLogic Server アプリケーションの開発における他の (サードパーティの) JSSE 実装の使用はサポートされていません。WebLogic Server が使用する SSL の実装はサーバのコンフィグレーションに対して固定であり、ユーザのアプリケーションによって置き換えることはできません。
+JSSE の WebLogic 実装は JCE 暗号サービス プロバイダ (Cryptographic Service Provider : CSP) をサポートしていますが、プロバイダの JCE に対するサポートが一定していないため、テストされていないプロバイダがそのまま機能するかどうかは保証できません。以下のプロバイダでは WebLogic Server をテスト済みです。
+JDK 5.0 に含まれているデフォルト JCE プロバイダ (SunJCE プロバイダ)。SunJCE プロバイダについては、 http://java.sun.com/j2se/1.5.0/docs/guide/security/jce/HowToImplAJCEProvider.html を参照してください。
+nCipher JCE プロバイダ
+その他のプロバイダは WebLogic Server で機能する可能性はありますが、テストされていないプロバイダの場合、おそらくそのままでは機能しません。WebLogic Server でサポートされている JCE プロバイダの使用に関する詳細については、『WebLogic Server のセキュリティ』の「SSL のコンフィグレーション」を参照してください。
+
+WebLogic Server では、セキュア ソケットレイヤ (SSL) で暗号化された通信に HTTPS ポートを使用します。このポートは SSL にしか使用できません。
+
+注意 :	WebLogic クライアントでセキュリティを実装するためには、Java クライアントで WebLogic Server ソフトウェア配布キットをインストールする必要があります。
+ 
+
+JNDI 認証の使い方
+Java クライアントは、Java Naming and Directory Interface (JNDI) を使用して WebLogic Server に資格を渡します。Java クライアントは、JNDI InitialContext を取得して WebLogic Server との通信を確立します。その後、InitialContext を使用して、WebLogic Server JNDI ツリーで必要なリソースをルックアップします。
+
+注意 :	JAAS は認証方法として望ましい選択肢ですが、認証プロバイダの LoginModule はユーザ名とパスワードの認証しかサポートしていません。したがって、クライアントの証明書認証 (双方向 SSL 認証ともいう) では JNDI を使用します。クライアントの証明書認証に JAAS を使用するには、LoginModule で証明書の認証を行うカスタム認証プロバイダを記述する必要があります。
+ユーザとユーザの資格を指定するには、表 5-1 で示されている JNDI プロパティを設定します。
+
+これらのプロパティは、InitialContext コンストラクタに渡されるハッシュ テーブルに格納されます。
+
+コード リスト 5-1 は、Java クライアントで一方向 SSL 証明書認証を使用する方法を示しています。双方向 SSL 認証のコード例については、コード リスト 5-4 を参照してください。
+
+コード リスト 5-1 JNDI を使用する一方向 SSL 認証の例
+...
+Hashtable env = new Hashtable();
+      env.put(Context.INITIAL_CONTEXT_FACTORY,
+              "weblogic.jndi.WLInitialContextFactory");
+      env.put(Context.PROVIDER_URL, "t3s://weblogic:7002");
+      env.put(Context.SECURITY_PRINCIPAL, "javaclient");
+      env.put(Context.SECURITY_CREDENTIALS, "javaclientpassword");
+      ctx = new InitialContext(env);
+注意 :	JNDI コンテキストとスレッドの詳細と、JNDI コンテキストの潜在的な問題を回避する方法については、『WebLogic JNDI プログラマーズ ガイド』の「JNDI コンテキストとスレッド」および「JNDI コンテキストの問題の回避方法」を参照してください。
+ 
+
+SSL 証明書認証の開発環境
+この節では、以下の内容について説明します。
+
+SSL 認証 API
+SSL クライアント アプリケーション コンポーネント
+SSL 認証 API
+WebLogic Server で SSL 認証を使用する Java クライアントを実装するには、JDK 5.0 アプリケーション プログラミング インタフェース (API) と WebLogic API を組み合わせて使用します。
+
+表 5-2 では、証明書認証の実装に使用される Java API パッケージについて説明します。表 5-2 の情報は Java API のマニュアルから取られており、WebLogic Server 固有の情報がコメントで追加されています。Java API の詳細については、http://java.sun.com/j2se/1.5.0/docs/api/index.html および http://java.sun.com/j2ee/1.4/docs/api/index.html の Javadoc を参照してください。
+
+表 5-3 では、証明書認証の実装に使用される WebLogic API について説明します。詳細については、WebLogic クラスの Javadoc を参照してください。
+
+
+表 5-2 Java 証明書 API
+Java 証明書 API
+説明 :
+javax.crypto
+このパッケージは暗号操作のためのクラスとインタフェースを提供する。このパッケージで定義されている暗号操作には、暗号化、鍵の生成と照合、および Message Authentication Code (MAC) の生成が含まれる。
+暗号化のサポートには、対称、非対称、ブロック、およびストリームの各暗号方式が含まれている。このパッケージは、セキュア ストリームおよび暗号化されたオブジェクトもサポートしている。
+このパッケージで提供されるクラスの多くは、プロバイダベースである (java.security.Provider クラスを参照)。クラス自体では、アプリケーションを記述できるプログラミング インタフェースが定義されている。独立したサードパーティ ベンダは、必要に応じて、実装自体を作成し、シームレスに組み込むことができる。したがって、アプリケーション開発者は、コードを追加したり書き直したりしなくても、プロバイダベースの実装をいくつでも利用できる。
+javax.net
+このパッケージはネットワーク アプリケーション用のクラスを提供する。ソケット作成用のファクトリが含まれている。ソケット ファクトリを使うと、ソケットの作成とコンフィグレーションの動作をカプセル化できる。
+javax.net.SSL
+このパッケージのクラスとインタフェースは WebLogic Server でサポートされているが、WebLogic Server で SSL を使用するときには weblogic.security.SSL パッケージの使用が望ましい。
+java.security.cert
+このパッケージは、証明書、証明書失効リスト (CRL)、および証明書パスの解析と管理を行うためのクラスとインタフェースを提供する。X.509 v3 証明書および X.509 v2 CRL のサポートが含まれている。
+java.security.KeyStore
+このクラスは、鍵と証明書のメモリ内コレクションを表す。以下の 2 タイプのキーストア エントリの管理に使用される。
+キー エントリ
+このタイプのキーストア エントリは暗号鍵情報を保持している。これは不正アクセスを防ぐため、保護された形式で格納される。
+
+通常、このタイプのエントリに格納された鍵は、対応する公開鍵の証明書チェーンを伴う秘密鍵またはプライベート キーである。
+
+プライベート キーおよび証明書チェーンは、自動認証のための指定されたエンティティによって使用される。この認証のためのアプリケーションには、ソフトウェアのリリースやライセンス付与の一環として JAR ファイルに署名するソフトウェア配布組織が含まれる。
+
+信頼性のある証明書エントリ
+このタイプのエントリには、別の相手に属する単一の公開鍵が含まれる。これは信頼性のある証明書と呼ばれる。その証明書内の公開鍵が、実際に証明書のサブジェクト (オーナー) によって識別される ID に属するものであるとキーストアのオーナーが信頼するからである。
+
+このタイプのエントリは、他の相手を認証するのに使用できる。
+
+java.security.PrivateKey
+プライベート キー。このインタフェースには、メソッドまたは定数が含まれない。すべてのプライベート キー インタフェースのグループ化 (およびタイプ保証) を行う役割を持つのみである。
+
+注意 :	専用のプライベート キー インタフェースは、このインタフェースを拡張したものである。たとえば、java.security.interfaces の DSAPrivateKey インタフェースを参照。
+java.security.Provider
+このクラスは、Java Security API の「暗号サービス プロバイダ」を表す。プロバイダは、以下のような Java Security の一部または全部を実装する。
+アルゴリズム (DSA、RSA、MD5、SHA-1 など)
+キーの生成、変換、および管理機能 (アルゴリズム固有キーなど)
+各プロバイダには名前とバージョン番号が付いており、インストールされる各実行時においてコンフィグレーションされる。
+暗号サービスの実装を提供するには、開発者チームまたはサード パーティのベンダが実装コードを記述し、Provider クラスのサブクラスを作成する。
+javax.servlet.http.HttpServletRequest
+このインタフェースは、ServletRequest インタフェースを拡張して、HTTP サーブレットのリクエスト情報を提供する。
+サーブレット コンテナは、HttpServletRequest オブジェクトを作成し、サーブレットのサービス メソッド (doGet、doPost など) に引数として渡す。
+javax.servlet.http.HttpServletResponse
+このインタフェースは、ServletResponse インタフェースを拡張して、応答送信の際に HTTP 固有の機能を提供する。たとえば、このインタフェースには HTTP ヘッダおよびクッキーにアクセスする方法が含まれる。
+サーブレット コンテナは、HttpServletRequest オブジェクトを作成し、サーブレットのサービス メソッド (doGet、doPost など) に引数として渡す。
+javax.servlet.ServletOutputStream
+このクラスは、バイナリ データをクライアントに送信するための出力ストリームを提供する。ServletOutputStream オブジェクトは通常、ServletResponse.getOutputStream() メソッドを通じて取得される。
+これは、サーブレット コンテナが実装する抽象クラスである。このクラスのサブクラスは、java.io.OutputStream.write(int) メソッドを実装する必要がある。
+javax.servlet.ServletResponse
+このクラスは、クライアントに応答を送信する際にサーブレットを支援するオブジェクトを定義する。サーブレット コンテナは、ServletResponse オブジェクトを作成し、サーブレットのサービス メソッド (doGet、doPost など) に引数として渡す。
+
+表 5-3 WebLogic 証明書 API
+WebLogic 証明書 API
+説明 :
+weblogic.net.http.HttpsURLConnection
+リモートのオブジェクトに HTTP with SSL (HTTPS) を提示するのに使用されるクラスを提供する。このクラスは、クライアントとして機能している WebLogic Server から別の WebLogic Server への発信 SSL 接続を確立するために使われる。
+weblogic.security.SSL.HostnameVerifier
+SSL ハンドシェーク時のホスト名検証によって、URL 内のホスト名がサーバの ID 内のホスト名に一致するかどうかが検証される。この検証は、介在者の攻撃を防ぐために必要となる。
+WebLogic Server では、HostnameVerifier の証明書ベースの実装がデフォルトで使用され、URL ホスト名がサーバ証明書の CN フィールドと一致するかどうかが検証される。
+Administration Console の [SSL] タブにある [詳細] ペインを使用すると、このデフォルトのホスト名検証をカスタム ホスト名検証に変更できる。その場合、WebLogic SSL API を使用しているサーバで実行されている SSL クライアントのデフォルトに影響が生じる。また、HttpsURLConnection や SSLContext などの WebLogic SSL API を使用すると、カスタム HostnameVerifier を明示的に設定できる。
+weblogic.security.SSL.
+TrustManager
+このインタフェースを使うと、ユーザはピアの証明書チェーンでの何らかの検証エラーをオーバーライドし、ハンドシェークを継続できる。また、ピア証明書チェーンに対しさらに検証を実行し、必要に応じてハンドシェークを中断することもできる。
+weblogic.security.SSL.
+CertPathTrustManager
+このクラスは、コンフィグレーション済みの CertPathValidation プロバイダを使用して、失効チェックなどの追加的な検証を実行する。
+デフォルトでは、CertPathTrustManager はインストールされるが、CertPathValidators を呼び出さないようにコンフィグレーションされている (InboundCertificateValidation および OutboundCertificateValidation の SSLMBean 属性で制御)。
+カスタム TrustManager をインストールするアプリケーションでは、CertPathTrustManager が置き換えられる。カスタム TrustManager を使用するアプリケーションで CertPathProviders も呼び出したい場合は、カスタム TrustManager から CertPathTrustManager に委任できる。
+weblogic.security.SSL.
+SSLContext
+このクラスは、このコンテキスト下で作成されたすべてのソケットで共有されるすべての状態情報を保持する。
+weblogic.security.SSL.
+SSLSocketFactory
+このクラスは、SSL ソケットを作成するための API を提供する。
+weblogic.security.SSL.
+SSLValidationConstants
+このクラスは、コンテキスト要素名を定義する。SSL は、1 つまたは複数の CertPathValidator オブジェクトを呼び出して追加検証を実行する前に、一部の組み込み検証を実行します。検証プロバイダは、実行済みの検証を検出することで、必要な検証の規模を縮小できます。
+SSL クライアント アプリケーション コンポーネント
+SSL クライアント アプリケーションには、少なくとも以下のコンポーネントが含まれます。
+
+Java クライアント
+通常、Java クライアントは以下の機能を実行します。
+
+クライアント ID、信頼、HostnameVerifier、および TrustManager による SSLContext の初期化
+キーストアのロード、およびプライベート キーと証明書チェーンの取得
+SSLSocketFactory の使用
+WebLogic Server のインスタンスによって提供される JSP に接続するための HTTPS の使用
+HostnameVerifier
+HostnameVerifier は weblogic.security.SSL.HostnameVerifier インタフェースを実装します。
+
+HandshakeCompletedListener
+HandshakeCompletedListener は、javax.net.ssl.HandshakeCompletedListener インタフェースを実装します。このインタフェースは、SSL クライアントが、指定された SSL 接続に対する SSL ハンドシェークの完了について通知を受け取るために使用します。
+
+TrustManager
+TrustManager は、weblogic.security.SSL.TrustManager インタフェースを実装します。
+
+ここで説明しているコンポーネントを実装する完全な実践的 SSL 認証クライアントについては、WebLogic Server で提供されている SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリの SSLClient サンプル アプリケーションを参照してください。このサンプルは、BEA の dev2dev サイトでも入手できます。
+
+JSSE 認証の詳細については、Sun の『Java Secure Socket Extension (JSSE) Reference Guide』(http://java.sun.com/j2se/1.5.0/docs/guide/security/jsse/JSSERefGuide.html) を参照してください。
+
+ 
+
+SSL を使用するアプリケーションの記述
+この節では、以下のトピックを取り上げます。
+
+WebLogic Server 間の安全な通信
+SSL クライアントの作成
+双方向 SSL 認証の使用
+JNDI を使用した双方向 SSL 認証
+カスタム ホスト名検証の使い方
+トラスト マネージャの使い方
+SSLContext の使い方
+URL を使用した発信 SSL 接続
+WebLogic Server 間の安全な通信
+URL オブジェクトを使用すると、クライアントとして機能している WebLogic Server インスタンスから別の WebLogic Server インスタンスへの発信 SSL 接続を確立することができます。weblogic.net.http.HttpsURLConnection クラスを使用して、プライベート キーとデジタル証明書を含む、クライアントのセキュリティ コンテキスト情報を指定できます。
+
+weblogic.net.http.HttpsURLConnection クラスは、ネゴシエーションされた暗号スイートの判別、ホスト名検証の取得と設定、サーバの証明書チェーンの取得、および新しい SSL ソケットを作成するための SSLSocketFactory の取得と設定を行うメソッドを提供します。
+
+SSLClient のコード例では、weblogic.net.http.HttpsURLConnection クラスを使用して発信 SSL 接続を確立しています。SSLClient のコード例は、SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリの examples.security.sslclient パッケージにあります。
+
+SSL クライアントの作成
+ここでは、さまざまなタイプの SSL クライアントを作成する方法を、サンプルを使って説明します。以下のタイプの SSL クライアントについて説明します。
+
+SSLClient サンプル
+SSLSocketClient サンプル
+双方向 SSL 認証の使用
+SSL クライアントのライセンス要件 : WebLogic SSL クラス (weblogic.security.SSL) を使用してエンタープライズ JavaBean (EJB) を呼び出すスタンドアロン Java クライアントはすべて、BEA ライセンス ファイルを使用する必要があります。クライアント アプリケーションを実行する際は、次のシステム プロパティを設定します。
+
+ライセンスを bea.home 以外の場所に保存している場合は、そのディレクトリを WebLogic CLASSPATH に追加してください。
+コマンドラインで、java.protocol.handler.pkgs=com.certicom.net.ssl を設定します。
+以下に、ライセンス ファイルのデフォルトの場所 (c:\bea) を使用する実行コマンドの例を示します。
+
+java -Dbea.home=c:\bea \
+-Djava.protocol.handler.pkgs=weblogic.net my_app
+
+SSLClient サンプル
+SSLClient サンプルでは、URL および URLConnection オブジェクトによって発信 SSL 接続を WebLogic SSL ライブラリを使用して確立する方法が示されています。スタンドアロンのアプリケーションからだけでなく、WebLogic Server 内のサーブレットからこの処理を行う方法も示されています。
+
+注意 :	SSL クライアントとして機能する WebLogic Server では、発信 SSL 接続にサーバの ID 証明書を使用します。WebLogic Server で実行するアプリケーションで以前に記述された SSL API を使用している場合、デフォルトではサーバの ID 証明書は共有されません (信頼のみ)。
+コード リスト 5-2 は、SSLClient サンプルの抜粋です。このサンプルは、SSLClient.java ファイルの SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリにあります。
+
+コード リスト 5-2 SSLClient サンプル コードの抜粋
+package examples.security.sslclient;
+
+import java.io.*;
+import java.net.URL;
+import java.security.Provider;
+import javax.servlet.ServletOutputStream;
+...
+  
+   * このメソッドでは、WebLogic SSL クライアント クラスを使用して、URL オブジェクトと
+   *  URLConnection オブジェクトで新しい SSL 接続
+   *  を作成する例を示す
+  public void wlsURLConnect(String host, String port,
+                            String sport, String query,
+                            OutputStream out)
+      throws Exception {
+...
+      URL wlsUrl = null;
+      try {
+        wlsUrl = new URL("http", host, Integer.valueOf(port).intValue(),
+                               query);
+        weblogic.net.http.HttpURLConnection connection =
+            new weblogic.net.http.HttpURLConnection(wlsUrl);
+        tryConnection(connection, out);
+      } 
+...
+      wlsUrl = new URL("https", host, Integer.valueOf(sport).intValue(),
+                             query);
+      weblogic.net.http.HttpsURLConnection sconnection =
+          new weblogic.net.http.HttpsURLConnection(wlsUrl);
+...
+SSLSocketClient サンプル
+SSLSocketClient サンプルでは、直接セキュア ポートから WebLogic Server のインスタンスによって提供される JSP に接続し、その接続の結果を表示する方法を示します。以下の機能を実装する方法が示されています。
+
+クライアント ID、HostnameVerifier、および TrustManager による SSLContext の初期化
+キーストアのロード、およびプライベート キーと証明書チェーンの取得
+SSLSocketFactory の使用
+WebLogic Server によって提供される JSP に接続するための HTTPS の使用
+javax.net.ssl.HandshakeCompletedListener インタフェースの実装
+サンプルが接続するサーバが目的のホスト上で稼働していることを確認するための、weblogic.security.SSL.HostnameVerifier クラスのダミー実装の作成
+コード リスト 5-3 は、SSLSocketClient サンプルの抜粋です。このサンプルは、SSLSocketClient.java ファイルの SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリにあります (sslclient ディレクトリにある SSLClientServlet サンプルは、SSLClient サンプルの簡単なサーブレット ラッパーです)。
+
+コード リスト 5-3 SSLSocketClient サンプル コードの抜粋
+package examples.security.sslclient;
+
+import java.io.*;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.cert.Certificate;
+import javax.net.ssl.HandshakeCompletedListener;
+import javax.net.ssl.SSLSocket;
+import weblogic.security.SSL.HostnameVerifier;
+import weblogic.security.SSL.SSLContext;
+import weblogic.security.SSL.SSLSocketFactory;
+import weblogic.security.SSL.TrustManager;
+...
+      SSLContext sslCtx = SSLContext.getInstance("https");
+      File KeyStoreFile  = new File ("mykeystore");
+...
+    // キーストアを開き、プライベート キーと証明書チェーンを取得する
+      KeyStore ks = KeyStore.getInstance("jks");
+      ks.load(new FileInputStream("mykeystore"), null);
+      PrivateKey key = (PrivateKey)ks.getKey("mykey",
+                            "testkey".toCharArray());
+      Certificate [] certChain = ks.getCertificateChain("mykey");
+      sslCtx.loadLocalIdentity(certChain, key);
+      HostnameVerifier hVerifier = null;
+      if (argv.length < 3)
+        hVerifier = new NulledHostnameVerifier();
+      else
+         hVerifier = (HostnameVerifier)
+                         Class.forName(argv[2]).newInstance();
+
+      sslCtx.setHostnameVerifier(hVerifier);
+      TrustManager tManager = new NulledTrustManager();
+      sslCtx.setTrustManager(tManager);
+       System.out.println(" Creating new SSLSocketFactory with SSLContext");
+      SSLSocketFactory sslSF = (SSLSocketFactory)
+                                      sslCtx.getSocketFactory();
+      System.out.println(" Creating and opening new SSLSocket with
+                           SSLSocketFactory");
+      // createSocket(String hostname, int port) を使用する
+      SSLSocket sslSock = (SSLSocket) sslSF.createSocket(argv[0],
+                           new Integer(argv[1]).intValue());
+      System.out.println(" SSLSocket created");
+       HandshakeCompletedListener mListener = null;
+        mListener = new MyListener();
+       sslSock.addHandshakeCompletedListener(new MyListener());
+      ...
+双方向 SSL 認証の使用
+証明書認証では、WebLogic Server は、リクエスト元のクライアントにデジタル証明書を送信します。クライアントは、デジタル証明書を調べて、本物かどうか、期限切れでないかどうか、認証元の WebLogic Server インスタンスに一致しているかどうかを確認します。
+
+双方向 SSL 認証 (相互認証の一形態) を使用する場合は、リクエスト元のクライアントもデジタル証明書を WebLogic Server に提示します。双方向 SSL 認証をするよう WebLogic Server のインスタンスをコンフィグレーションすると、指定した認証局からデジタル証明書を送信するようにリクエスト元のクライアントに要求できるようになります。WebLogic Server では、信頼性のある認証局によって署名されたデジタル証明書のみが受け付けられます。
+
+双方向 SSL 認証をするための WebLogic Server のコンフィグレーション方法については、『WebLogic Server のセキュリティ』の「SSL のコンフィグレーション」を参照してください。
+
+以降の節では、双方向 SSL 認証を WebLogic Server に実装するさまざまな方法について説明します。
+
+JNDI を使用した双方向 SSL 認証
+WebLogic Server インスタンス間で双方向 SSL 認証を使用する
+サーブレットで双方向 SSL 認証を使用する
+JNDI を使用した双方向 SSL 認証
+Java クライアントの双方向 SSL 認証で JNDI を使用する場合、WebLogic JNDI Environment クラスの setSSLClientCertificate() メソッドを使用します。このメソッドは、クライアント認証に対して、X.509 デジタル証明書のプライベート キーと証明書チェーンを設定します。
+
+デジタル証明書を JNDI に渡すには、DER エンコードされたデジタル証明書を格納するファイルで開かれている InputStreams の配列を作成し、JNDI ハッシュ テーブルにその配列を設定します。配列内の最初の要素には、Java クライアントのプライベート キー ファイルで開かれている InputStream が格納されている必要があります。配列内の 2 番目の要素には、Java クライアントのデジタル証明書ファイルで開かれている InputStream が格納されている必要があります(このファイルには Java クライアントの公開鍵が含まれています)。追加要素として、ルート認証局のデジタル証明書、証明書チェーン内のデジタル証明書の署名者を格納できます。デジタル証明書がサーバの信頼性のある認証局によって直接発行されない場合、WebLogic Server は、証明書チェーンを使用して Java クライアントのそのデジタル証明書を認証できます。
+
+weblogic.security.PEMInputStream クラスを使用すると、Privacy Enhanced Mail (PEM) ファイルに保存されているデジタル証明書を読み込むことができます。このクラスでは、base 64 でエンコードされた証明書を PEM ファイルからデコードするフィルタが提供されます。
+
+コード リスト 5-4 は、Java クライアントで双方向 SSL 認証を使用する方法を示しています。
+
+コード リスト 5-4 JNDI を使用する双方向 SSL 認証クライアントの例
+import javax.naming.Context;
+import javax.naming.InitialContext;
+import javax.naming.NamingException;
+import weblogic.jndi.Environment;
+import weblogic.security.PEMInputStream;
+import java.io.InputStream;
+import java.io.FileInputStream;
+public class SSLJNDIClient 
+{ 
+  public static void main(String[] args) throws Exception
+  {
+    Context context = null;
+    try {
+      Environment env = new Environment();
+      // 接続パラメータを設定
+      env.setProviderUrl("t3s://localhost:7002");      
+      // 次の 2 つの set メソッドは、UserNameMapper インタフェースを
+      // 使用している場合は省略可能
+      env.setSecurityPrincipal("system");
+      env.setSecurityCredentials("weblogic");
+      InputStream key = new FileInputStream("certs/demokey.pem");
+      InputStream cert = new FileInputStream("certs/democert.pem");
+      // key/cert が pem ファイル内にある場合は入力ストリームをラップ
+      key = new PEMInputStream(key);
+      cert = new PEMInputStream(cert);
+      env.setSSLClientCertificate(new InputStream[] { key, cert});
+             env.setInitialContextFactory(Environment.DEFAULT_INITIAL_CONTEXT_FACTORY); 
+      context = env.getInitialContext();
+      Object myEJB = (Object) context.lookup("myEJB");
+    }
+    finally {
+      if (context != null) context.close();
+    }
+  }
+}
+JNDI の getInitialContext() メソッドが呼び出されると、Java クライアントと WebLogic Server は、Web ブラウザが相互認証を実行してセキュリティ保護された Web サーバ接続を取得するのと同じ方法で相互認証を実行します。デジタル証明書を確認できない場合や Java クライアントのデジタル証明書をデフォルトの (アクティブな) セキュリティ レルムで認証できない場合、例外が送出されます。認証されたユーザ オブジェクトは Java クライアントのサーバ スレッドに格納され、保護された WebLogic リソースへの Java クライアントのアクセスを管理するパーミッションのチェックに使用されます。
+
+WebLogic JNDI Environment クラスを使用する場合、getInitialContext() メソッドの呼び出しごとに新しい Environment オブジェクトを作成する必要があります。User オブジェクトとセキュリティ資格を一度指定すると、ユーザおよびユーザに関連する資格は Environment オブジェクトの設定に残ります。再設定を試みて JNDI getInitialContext() メソッドを呼び出した場合は、元のユーザと資格が使用されます。
+
+Java クライアントによる双方向 SSL 認証を使用する場合、WebLogic Server は、クライアント JVM ごとにユニークな Java 仮想マシン (JVM) ID を取得し、Java クライアントと WebLogic Server の間の接続が切断されないようにします。処理がないために接続がタイムアウトになるまで、Java クライアントの JVM が実行されている間は接続が続行されます。Java クライアントが新しい SSL 接続を確実にネゴシエーションできる唯一の方法は、その JVM を停止して JVM の他のインスタンスを実行することです。
+
+コード リスト 5-4 のコードでは、weblogic.security.providers.authentication.UserNameMapper インタフェースを実装する WebLogic ID アサーション プロバイダの呼び出しが生成されます。UserNameMapper インタフェースを実装するクラスは、デジタル証明書が有効な場合にユーザ オブジェクトを返します。WebLogic Server では、この認証されたユーザ オブジェクトは WebLogic Server 内の Java クライアントのスレッドに格納されます。格納されたユーザ オブジェクトは、以降の認可リクエストで、スレッドがデフォルトの (アクティブな) セキュリティ レルムで保護されている WebLogic リソースにアクセスする際に使用されます。
+
+注意 :	weblogic.security.providers.authentication.UserNameMapper インタフェースの実装は、CLASSPATH に指定されている必要があります。
+証明書ベースの認証を実行する ID アサーション プロバイダがコンフィグレーションされていない場合、SSL 接続の JVM で動作している Java クライアントは、新しい JNDI InitialContext を作成し、JNDI SECURITY_PRINCIPAL と SECURITY_CREDENTIALS プロパティで新しいユーザ名とパスワードを指定することで WebLogic Server ユーザの ID を変更できます。SSL 接続後に Java クライアントによって渡されたデジタル証明書は使用されません。新しい WebLogic Server ユーザは、最初のユーザのデジタル証明書でネゴシエーションした SSL 接続を使用し続けます。
+
+証明書ベースの認証を実行する ID アサーション プロバイダがコンフィグレーションされている場合、WebLogic Server はデジタル証明書を Java クライアントから UserNameMapper インタフェースを実装するクラスへ渡し、UserNameMapper クラスがデジタル証明書を WebLogic Server ユーザ名にマップします。したがって、証明書ベースの ID アサーションを使用していて新しいユーザ ID を設定する場合、その ID は変更できません。この理由は、デジタル証明書は、Environment ごとに JVM からの最初の接続リクエストの時点でのみ処理されるからです。
+
+警告 :	次のような制限があります。双方向 SSL と JNDI を使用している場合は、1 つのクライアント JVM から複数のユーザが同時に WebLogic Server にログインすることはできません。異なるスレッドで複数のログインが実行された場合、その結果は確認不能であり、片方のユーザのリクエストが別のユーザのログインで実行され、ユーザが別のユーザのデータにアクセスできるようになることも考えられます。WebLogic Server では、1 つのクライアント JVM からの証明書ベースの複数の同時ログインをサポートしていません。JNDI コンテキストとスレッドの詳細と、JNDI コンテキストの潜在的な問題を回避する方法については、『WebLogic JNDI プログラマーズ ガイド』の「JNDI コンテキストとスレッド」および「JNDI コンテキストの問題の回避方法」を参照してください。
+ユーザ名マッパーの作成
+双方向 SSL を使用している場合、WebLogic Server は SSL 接続を確立するときに Web ブラウザまたは Java クライアントのデジタル証明書を確認します。ただし、デジタル証明書は Web ブラウザまたは Java クライアントを WebLogic Server セキュリティ レルムのユーザとしては認識しません。Web ブラウザまたは Java クライアントがセキュリティ ポリシーで保護された WebLogic Server リソースを要求すると、WebLogic Server は Web ブラウザまたは Java クライアントに ID を持つように要求します。このリクエストに対応するため、WebLogic ID アサーション プロバイダは、Web ブラウザまたは Java クライアントのデジタル証明書を WebLogic Server セキュリティ レルムのユーザにマップするユーザ名マッパーを、有効にできるようにします。ユーザ名マッパーは、weblogic.security.providers.authentication.UserNameMapper インタフェースの実装でなければなりません。
+
+weblogic.security.providers.authentication.UserNameMapper インタフェースのデフォルト実装、DefaultUserNameMapperImpl を使用することも、独自の実装を開発することもできます。
+
+WebLogic ID アサーション プロバイダは、以下の ID アサーション トークン タイプについて、UserNameMapper インタフェースの実装を呼び出すことができます。
+
+SSL ハンドシェークを通じて渡された X.509 デジタル証明書
+CSIv2 を通じて渡された X.509 デジタル証明書
+CSIv2 を通じて渡された X501 識別名
+その他のタイプの証明書をマップする場合は、UserNameMapper インタフェースの独自の実装を記述します。
+
+デジタル証明書をユーザ名にマップする UserNameMapper インタフェースを実装するには、次の処理を実行する UserNameMapper クラスを記述します。
+
+UserNameMapper 実装クラスをインスタンス化します。
+UserNameMapper インタフェース実装を作成します。
+mapCertificateToUserName() メソッドを使用して、クライアントから提示された証明書チェーンに基づいて証明書をユーザ名にマップします。
+文字列属性タイプを対応する Attribute Value Assertion フィールド タイプにマップします。
+WebLogic Server インスタンス間で双方向 SSL 認証を使用する
+一方の WebLogic Server インスタンスがもう一方の WebLogic Server インスタンスのクライアントとして機能するサーバ間通信で双方向 SSL 認証を使用できます。サーバ間通信で双方向 SSL 認証を使用すると、一般的なクライアント/サーバ環境でない場合でも、信頼できる高度なセキュリティで保護した接続を利用することができます。
+
+コード リスト 5-5 は、ある WebLogic Server インスタンスで動作するサーブレットから server2.weblogic.com という別の WebLogic Server インスタンスにセキュリティで保護された接続を確立する方法を示しています。
+
+コード リスト 5-5 他の WebLogic Server インスタンスへのセキュリティ保護された接続の確立
+FileInputStream [] f = new FileInputStream[3]; 
+   f[0]= new FileInputStream("demokey.pem");
+   f[1]= new FileInputStream("democert.pem");
+   f[2]= new FileInputStream("ca.pem");
+Environment e = new Environment ();
+e.setProviderURL("t3s://server2.weblogic.com:443");
+e.setSSLClientCertificate(f);
+e.setSSLServerName("server2.weblogic.com");
+e.setSSLRootCAFingerprints("ac45e2d1ce492252acc27ee5c345ef26");
+
+e.setInitialContextFactory
+	("weblogic.jndi.WLInitialContextFactory");
+Context ctx = new InitialContext(e.getProperties())
+コード リスト 5-5 で、WebLogic JNDI Environment クラスは以下のパラメータを格納するハッシュ テーブルを作成します。
+
+setProviderURL - SSL サーバとして機能する WebLogic Server インスタンスの URL を指定します。SSL クライアントとして機能する WebLogic Server インスタンスは、このメソッドを呼び出します。URL では、SSL を基にした、WebLogic Server 独自のプロトコルである t3s プロトコルを指定します。SSL プロトコルは、2 つの WebLogic Server インスタンス間の接続および通信を保護します。
+setSSLClientCertificate - SSL 接続に使用するプライベート キーと証明書チェーンを指定します。このメソッドを使用して、プライベート キー (配列内の最初の入力ストリーム) と X.509 証明書のチェーン (配列内の残りの入力ストリームを構成する) から成る入力ストリーム配列を指定します。証明書チェーン内の各証明書は、チェーン内の前の証明書の発行元です。
+setSSLServerName - SSL サーバとして機能する WebLogic Server インスタンスの名前を指定します。SSL サーバがデジタル証明書を SSL クライアントとして機能する WebLogic Server に提示すると、setSSLServerName メソッドを使用して指定された名前がデジタル証明書内の一般名と比較されます。ホスト名検証が成功するためには、名前が一致する必要があります。このパラメータは、介在者の攻撃を防ぐために使用されます。
+setSSLRootCAFingerprint - 信頼性のある認証局のセットを表すデジタル コード (つまり、信頼性のある証明書のフィンガープリントに基づく信頼) を指定します。SSL サーバとして機能する WebLogic Server インスタンスから受け取った証明書チェーンのルート証明書は、このメソッドで指定されたフィンガープリントのいずれかと一致しないと信頼を確立できません。このパラメータは、介在者の攻撃を防ぐために使用されます。これにより、WebLogic Server の信頼コンフィグレーションで WebLogic Server で動作するクライアント用に指定されているデフォルト レベルの信頼を補完できます。
+注意 :	JNDI コンテキストとスレッドの詳細と、JNDI コンテキストの潜在的な問題を回避する方法については、『WebLogic JNDI プログラマーズ ガイド』の「JNDI コンテキストとスレッド」および「JNDI コンテキストの問題の回避方法」を参照してください。
+サーブレットで双方向 SSL 認証を使用する
+Java クライアントをサーブレット (または他のサーバサイド Java クラス) で認証するには、クライアントがデジタル証明書を提供したかどうかをチェックする必要があります。提供した場合は、証明書が信頼できる認証局で発行されたかどうかをさらにチェックします。サーブレットの開発者には、Java クライアントが有効なデジタル証明書を持っているかどうかを尋ねる役割があります。WebLogic Servlet API でサーブレットを開発する場合、HTTPServletRequest オブジェクトの getAttribute() メソッドで SSL 接続に関する情報にアクセスする必要があります。
+
+以下の属性が、WebLogic Server サーブレットでサポートされています。
+
+javax.servlet.request.X509Certificate
+java.security.cert.X509Certificate [] - X509 証明書の配列を返します。
+javax.servlet.request.cipher_suite - HTTPS が使用する暗号スイートを表す文字列を返します。
+javax.servlet.request.key_size - 対称 (バルク暗号化) キー アルゴリズムのビット サイズを表す整数 (0、40、56、128、168) を返します。
+weblogic.servlet.request.SSLSession
+javax.net.ssl.SSLSession - 暗号スイートを含む SSL セッション オブジェクト、および SSL セッション オブジェクトが作成された日付と最後に使用された日付を返します。
+デジタル証明書に定義されているユーザ情報にアクセスできます。javax.servlet.request.X509Certificate 属性を取得すると、情報は java.security.cert.X509Certificate 型の配列になっています。配列をその型にキャストして証明書を調べるだけで済みます。
+
+デジタル証明書には、以下のような情報が指定されています。
+
+サブジェクト (保持者、オーナー) の名前と、そのサブジェクトの ID をユニークに確認するために必要なその他の識別情報
+サブジェクトの公開鍵
+デジタル証明書を発行した認証局の名前
+シリアル番号
+デジタル証明書の有効期間 (開始日と終了日で定義)
+カスタム ホスト名検証の使い方
+ホスト名検証を使用すると、SSL 接続先のホストが予定していた通信先、または許可された通信先であることを確認できます。ホスト名検証は、WebLogic クライアントまたは WebLogic Server インスタンスが別のアプリケーション サーバの SSL クライアントとして動作している場合に便利です。介在者の攻撃を防ぐのに役立ちます。
+
+注意 :	デモ用デジタル証明書はインストール時に生成されるので、WebLogic Server ソフトウェアがインストールされるシステムのホスト名を格納します。したがって、開発またはテスト目的でデモ用証明書を使用する場合は、ホスト名検証をオンのままにしておく必要があります。
+WebLogic Server の SSL ハンドシェーク機能としてのデフォルトの動作は、SSL サーバのデジタル証明書のサブジェクト DN にある CN フィールドと、サーバへの接続に使用する URL 内のホスト名を比較することです。これらの名前が一致しない場合は SSL 接続が中断されます。
+
+SSL 接続の中断は、サーバのホスト名をデジタル証明書と照らし合わせて有効性を検証する SSL クライアントによって実行されます。デフォルト以外の動作が必要な場合は、ホスト名検証を無効にするか、カスタム ホスト名検証を登録します。ホスト名検証を無効にすると、SSL 接続は介在者の攻撃に対して無防備な状態になります。
+
+ホスト名検証は、以下の方法で無効にできます。
+
+Administration Console で、サーバ (たとえば myserver) の [キーストア & SSL] タブの [詳細オプション] にある [ホスト名の検証] フィールドで [なし] を指定します。
+SSL クライアントのコマンドラインで、次の引数を入力します。
+-Dweblogic.security.SSL.ignoreHostnameVerification=true
+
+カスタム ホスト名検証を記述できます。weblogic.security.SSL.HostnameVerifier インタフェースではコールバック メカニズムが提供されるため、このインタフェースを実装することで、URL のホスト名への接続を許可するかどうかについてのポリシーを指定できます。ポリシーは、証明書ベースにすることも、他の認証スキームに依存させることも可能です。
+
+カスタム ホスト名検証を使用するには、weblogic.security.SSL.HostnameVerifier インタフェースを実装するクラスを作成し、サーバのセキュリティ ID に関する情報を取得するメソッドを定義します。
+
+注意 :	このインタフェースは新しいスタイルの証明書を受け取り、非推奨になった weblogic.security.SSL.HostnameVerifierJSSE インタフェースに代わるものです。
+カスタム ホスト名検証を使用する前に、以下の方法で実装するクラスを指定する必要があります。
+
+Administration Console で、サーバ コンフィグレーションの [SSL] タブの [詳細] にある [カスタム ホスト名の検証] フィールドに、このインタフェースを実装するクラスの名前を指定します。指定するクラスには、引数を取らないパブリック コンストラクタが必要です。
+コマンドラインに、次の引数を入力します。
+-Dweblogic.security.SSL.hostnameVerifier=hostnameverifier
+
+hostnameverifier の値は、カスタム ホスト名検証を実装するクラスの名前です。
+
+コード リスト 5-6 は、NulledHostnameVerifier サンプルの抜粋です。このサンプルは、NulledHostnameVerifier.java ファイルの SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリにあります。このコード例には、比較のために常に true を返す NulledHostnameVerifier クラスが含まれています。このサンプルでは、WebLogic SSL クライアントは、サーバのホスト名とデジタル証明書の SubjectDN との比較に関係なく、どの SSL サーバにも接続できます。
+
+コード リスト 5-6 ホスト名検証のサンプル コードの抜粋
+public class NulledHostnameVerifier implements
+                     weblogic.security.SSL.HostnameVerifier {
+  public boolean verify(String urlHostname, javax.net.ssl.SSLSession session) {
+    return true;
+  }
+}
+トラスト マネージャの使い方
+weblogic.security.SSL.TrustManager インタフェースは以下を可能にします。
+
+特定の証明書検証エラーを無視する
+ピア証明書チェーンに対して追加の検証を実行する
+注意 :	このインタフェースは新しいスタイルの証明書を受け取り、非推奨になった weblogic.security.SSL.TrustManagerJSSE インタフェースに代わるものです。
+SSL クライアントが WebLogic Server のインスタンスに接続すると、サーバは認証のためにデジタル証明書チェーンをクライアントに提示します。提示されたチェーンに無効なデジタル証明書が含まれている場合もあります。SSL 仕様では、クライアントが無効な証明書を検出した場合、SSL 接続が中断されることになっています。TrustManager インタフェースのカスタム実装を使用すると、どのような場合に SSL ハンドシェークを継続するか (または中止するか) を制御できます。トラスト マネージャを使用することで、特定の検証エラーを無視 (必要に応じてカスタム検証チェックを実行) してから、ハンドシェークを継続するかどうかを決定できます。
+
+トラスト マネージャを作成するには、weblogic.security.SSL.TrustManager インタフェースを使用します。このインタフェースには、証明書検証で使用する一連のエラー コードが含まれています。また、必要に応じて、ピア証明書での付加的な検証を実行したり、SSL ハンドシェークを中断したりできます。デジタル証明書の検証が済むと、weblogic.security.SSL.TrustManager インタフェースがコールバック関数を使用して、デジタル証明書の検証結果をオーバーライドします。トラスト マネージャのインスタンスは、setTrustManager() メソッドを使用して SSL コンテキストに関連付けることができます。
+
+トラスト マネージャはプログラムでのみ設定できます。その使用は、Administration Console やコマンドラインでは定義できません。
+
+注意 :	実行する検証によっては、トラスト マネージャを使用するとパフォーマンスに影響します。
+コード リスト 5-7 は、NulledTrustManager サンプルの抜粋です。このサンプルは、NulledTrustManager.java ファイルの SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリにあります。SSLSocketClient サンプルでは、カスタム トラスト マネージャを使用します。SSLSocketClient では、トラスト マネージャで SSLContext を使用して新しい SSL 接続を設定する方法が示されています。
+
+コード リスト 5-7 NulledTrustManager サンプル コードの抜粋
+package examples.security.sslclient;
+
+import weblogic.security.SSL.TrustManager;
+import java.security.cert.X509Certificate;
+...
+public class NulledTrustManager implements TrustManager{ 
+  public boolean certificateCallback(X509Certificate[] o, int validateErr) {
+   System.out.println(" --- Do Not Use In Production ---\n" + 
+                          " By using this NulledTrustManager, the trust in" +
+                            " the server's identity is completely lost.\n" +                           " --------------------------------");
+   for (int i=0; i<o.length; i++)
+     System.out.println(" certificate " + i + " -- " + o[i].toString());
+   return true;
+  }
+}
+証明書パス トラスト マネージャの使い方
+CertPathTrustManager (weblogic.security.SSL.CertPathTrustManager) は、デフォルトのセキュリティ レルムのコンフィグレーション済み証明書パス検証プロバイダを使用して、失効チェックなどの追加的な検証を実行します。
+
+デフォルトでは、サーバの発信 SSL で使用するアプリケーション コードからは、組み込みの SSL 証明書検証にしかアクセスできません。しかし、管理者がサーバにコンフィグレーションした追加の証明書検証にアクセスするために、アプリケーション コードで CertPathTrustManager を指定することは可能です。アプリケーション コードにおいて証明書パス検証プロバイダも実行する場合は、アプリケーション コードで CertPathTrustManager を使用する必要があります。
+
+このクラスは、以下の 3 つの方法で使用できます。
+
+発信 SSL で検証プロバイダを使用することを示すスイッチが SSLMBean に設定されている場合にのみ、Trust Manager がコンフィグレーション済みの CertPathValidators を呼び出す。つまり、管理者がコンフィグレーションしたものに、検証を完全に委任することになります。この方法には、setUseConfiguredSSLValidation() メソッドを使用します。これがデフォルトです。
+Trust Manager が常にコンフィグレーション済みの CertPathValidators を呼び出す。この方法には、setBuiltinSSLValidationAndCertPathValidators() メソッドを使用します。
+Trust Manager はコンフィグレーション済みの CertPathValidators を呼び出さない。この方法には、setBuiltinSSLValidationOnly() メソッドを使用します。
+ハンドシェーク完了リスナの使い方
+javax.net.ssl.HandshakeCompletedListener は、指定された SSL 接続に対する SSL プロトコル ハンドシェークの完了について SSL クライアントが通知を受け取る方法を定義します。コード リスト 5-8 は、MyListener サンプルの抜粋です。このサンプルは、MyListener.java ファイルの SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリにあります。
+
+コード リスト 5-8 MyListener (HandshakeCompletedListener) サンプル コードの抜粋
+package examples.security.sslclient;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.FileInputStream;
+import javax.net.ssl.HandshakeCompletedListener;
+import java.util.Hashtable;
+import javax.net.ssl.SSLSession;
+...
+  public class MyListener implements HandshakeCompletedListener
+  {
+    public void handshakeCompleted(javax.net.ssl.HandshakeCompletedEvent
+                                          event)
+    {
+      SSLSession session = event.getSession();
+      System.out.println("Handshake Completed with peer " +
+                               session.getPeerHost());
+      System.out.println("   cipher: " + session.getCipherSuite());
+      Certificate[] certs = null;
+      try
+      {
+        certs = session.getPeerCertificates();
+      }
+      catch (SSLPeerUnverifiedException puv)
+      {
+        certs = null;
+      }
+      if  (certs != null)
+      {
+        System.out.println("   peer certificates:");
+        for (int z=0; z<certs.length; z++) 
+                 System.out.println("      certs["+z+"]: " + certs[z]);
+      }
+      else
+      {
+        System.out.println("No peer certificates presented");
+      }
+    }
+  }
+SSLContext の使い方
+SSLContext クラスを使用すると、SSL をプログラムによってコンフィグレーションし、SSL セッション情報を保持できます。各インスタンスは、認証の実行に使用するキー、証明書チェーン、および信頼性のある CA 証明書を使用してコンフィグレーションできます。同じ SSLContext で作成し、同じ SSL サーバへの接続に使用する SSL ソケットは、SSL セッション情報を再利用できます。セッション情報が実際に再利用されるかどうかは、SSL サーバによって異なります。
+
+セッション キャッシングに関する詳細については、『WebLogic Server のセキュリティ』の「SSL セッションの動作」を参照してください。トラスト マネージャ クラスのインスタンスを SSL コンテキストと関連付けるには、weblogic.security.SSL.SSLContext.setTrustManager() メソッドを使用します。
+
+SSLContext は、プログラムでのみ設定できます。Administration Console やコマンドラインでは設定できません。SSLContext オブジェクトは、Java の new 式または SSLContext クラスの getInstance() メソッドで作成できます。getInstance() メソッドは静的で、指定されたセキュア ソケット プロトコルを実装する新しい SSLContext オブジェクトを生成します。SSLContext クラスの使用例は、SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリの SSLSocketClient.java のサンプルで提供されています。SSLSocketClient サンプルでは、SSLContext を使って新しい SSL ソケットを作成する新しい SSL ソケット ファクトリを作成する方法が示されています。
+
+コード リスト 5-9 は、getInstance() メソッドを使用したインスタンス化のサンプルです。
+
+コード リスト 5-9 SSL Context のコード例
+import weblogic.security.SSL.SSLContext;
+  SSLcontext sslctx = SSLContext.getInstance ("https")
+URL を使用した発信 SSL 接続
+URL オブジェクトを使用すると、クライアントとして機能している WebLogic Server インスタンスから別の WebLogic Server インスタンスへの発信 SSL 接続を確立することができます。WebLogic Server は、発信 SSL 接続について一方向と双方向の SSL 認証を両方ともサポートしています。
+
+一方向 SSL 認証の場合は、java.net.URL、java.net.URLConnection、および java.net.HTTPURLConnection クラスを使用して、URL オブジェクトを使用する発信 SSL 接続を確立します。コード リスト 5-10 は、HTTP および HTTPS の URL を両方ともサポートし、これらの Java クラスのみを使用する (つまり WebLogic クラスは不要) simpleURL クラスを示しています。WebLogic Server で一方向 SSL 認証 (HTTPS) に simpleURL クラスを使用するための必要条件は、java.protocols.handler.pkgs のシステム プロパティで「weblogic.net」が定義されていることだけです。
+
+注意 :	コード リスト 5-10 の simpleURL サンプルは、デフォルトで信頼性とホスト名をチェックするため、このサンプルでは信頼されていてホスト名チェックを通過する本当の Web サーバにデフォルトで接続することが必要です。そうしない場合は、コマンドライン上で信頼性とホスト名チェックをオーバーライドする必要があります。
+コード リスト 5-10 Java クラスのみを使用する一方向 SSL 認証 URL 発信 SSL 接続クラス
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.HttpURLConnection;
+import java.io.IOException;
+public class simpleURL
+{
+   public static void main (String [] argv)
+   {
+     if (argv.length != 1)
+     {
+       System.out.println("Please provide a URL to connect to");
+       System.exit(-1);
+     }
+     setupHandler();
+     connectToURL(argv[0]);
+   }
+   private static void setupHandler()
+   {
+     java.util.Properties p = System.getProperties();
+     String s = p.getProperty("java.protocol.handler.pkgs");
+     if (s == null)
+       s = "weblogic.net";
+     else if (s.indexOf("weblogic.net") == -1)
+       s += "|weblogic.net";
+     p.put("java.protocol.handler.pkgs", s);
+     System.setProperties(p);
+   }
+   private static void connectToURL(String theURLSpec)
+   {
+     try
+     {
+       URL theURL = new URL(theURLSpec);
+       URLConnection urlConnection = theURL.openConnection();
+       HttpURLConnection connection = null;
+       if (!(urlConnection instanceof HttpURLConnection))
+       {
+         System.out.println("The URL is not using HTTP/HTTPS: " +
+                              theURLSpec);
+         return;
+       }
+       connection = (HttpURLConnection) urlConnection;
+       connection.connect();
+       String responseStr = "\t\t" +
+              connection.getResponseCode() + " -- " +
+              connection.getResponseMessage() + "\n\t\t" +
+                   connection.getContent().getClass().getName() + "\n";
+       connection.disconnect();
+       System.out.println(responseStr);
+     }
+     catch (IOException ioe)
+     {
+       System.out.println("Failure processing URL: " + theURLSpec);
+       ioe.printStackTrace();
+     }
+   }
+}
+双方向 SSL 認証の場合は、weblogic.net.http.HttpsURLConnection クラスを使用して、プライベート キーとデジタル証明書を含む、クライアントのセキュリティ コンテキスト情報を指定できます。このクラスのインスタンスは、リモート オブジェクトに対する HTTPS 接続を表しています。
+
+SSLClient サンプル コード (コード リスト 5-11) には、WebLogic URL オブジェクトを使用して、発信 SSL 接続を確立する方法が示されています。コード リスト 5-11 のコード例は、SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリの SSLClient.java ファイルからの抜粋です。
+
+コード リスト 5-11 WebLogic 双方向 SSL 認証 URL 発信 SSL 接続のコード例
+wlsUrl = new URL("https", host, Integer.valueOf(sport).intValue(),
+                 query);
+weblogic.net.http.HttpsURLConnection sconnection =
+         new weblogic.net.http.HttpsURLConnection(wlsUrl);
+...
+InputStream [] ins = new InputStream[2];
+      ins[0] = new FileInputStream("clientkey.pem");
+      ins[1] = new FileInputStream("client2certs.pem");
+       String pwd = "clientkey";
+      sconnection.loadLocalIdentity(ins[0], ins[1], pwd.toCharArray());
+ 
+
+SSL クライアントのコード例
+WebLogic Server ソフトウェアには、完全な実践的 SSL 認証サンプルが付属しています。そのサンプルは、SAMPLES_HOME\server\examples\src\examples\security\sslclient ディレクトリにあります。このサンプルの説明と、構築、コンフィグレーション、および実行の手順については、サンプル ディレクトリの package.html ファイルを参照してください。このコード例は、修正して再利用できます。
+
+
+  ページの先頭       前  次
+Oracle Is The Information Company	会社情報 | Oracle RSS Feeds | 採用情報 | お問い合わせ | サイトマップ | 日本オラクル情報保護方針 | ウェブサイトのご使用条件 | 情報保護基本方針
+Cookieの設定Ad Choices
